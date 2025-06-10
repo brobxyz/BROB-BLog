@@ -1,0 +1,642 @@
+# This workflow will build and push a node.js application to an Azure Web App when a commit is pushed to your default branch.
+#
+# This workflow assumes you have already created the target Azure App Service web app.
+# For instructions see https://docs.microsoft.com/en-us/azure/app-service/quickstart-nodejs?tabs=linux&pivots=development-environment-cli
+#
+# To configure this workflow:
+#
+# 1. Download the Publish Profile for your Azure Web App. You can download this file from the Overview page of your Web App in the Azure Portal.
+#    For more information: https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#generate-deployment-credentials
+#
+# 2. Create a secret in your repository named AZURE_WEBAPP_PUBLISH_PROFILE, paste the publish profile contents as the value of the secret.
+#    For instructions on obtaining the publish profile see: https://docs.microsoft.com/azure/app-service/deploy-github-actions#configure-the-github-secret
+#
+# 3. Change the value for the AZURE_WEBAPP_NAME. Optionally, change the AZURE_WEBAPP_PACKAGE_PATH and NODE_VERSION environment variables below.
+#
+# For more information on GitHub Actions for Azure: https://github.com/Azure/Actions
+# For more information on the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# For more samples to get started with GitHub Action workflows to deploy to Azure: https://github.com/Azure/actions-workflow-samples
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: your-app-name    # set this to your application's name
+  AZURE_WEBAPP_PACKAGE_PATH: '.'      # set this to the path to your web app project, defaults to the repository root
+  NODE_VERSION: '20.x'                # set this to the node version to use
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: npm install, build, and test
+      run: |
+        npm install
+        npm run build --if-present
+        npm run test --if-present
+
+    - name: Upload artifact for deployment job
+      uses: actions/upload-artifact@v4
+      with:
+        name: node-app
+        path: .
+
+  deploy:
+    permissions:
+      contents: none
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: 'Development'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+    - name: Download artifact from build job
+      uses: actions/download-artifact@v4
+      with:
+        name: node-app
+
+    - name: 'Deploy to Azure WebApp'
+      id: deploy-to-webapp
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emerging Product Trends Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutral (Seashell, Onyx, Terracotta) -->
+    <!-- Application Structure Plan: A tab-based dashboard SPA. The default view, "Market Pulse," provides a high-level overview with key stats and charts (product distribution, average scores). A second tab, "Product Explorer," contains an interactive, filterable, and searchable table of all 100 products for deep-diving. A third tab, "Market Insights," uses accordions to present the report's qualitative analysis in a digestible format. This structure was chosen to transform the linear report into a task-oriented tool, allowing users to move from a broad overview to specific details or contextual analysis based on their immediate needs, which is more usable for an entrepreneur or researcher. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Product category counts. Goal: Inform proportions. Viz: Donut Chart. Interaction: Hover tooltips. Justification: Quick, visual breakdown of product mix. Library: Chart.js.
+        - Report Info: Average Uniqueness/Quality scores per category. Goal: Compare categories. Viz: Grouped Bar Chart. Interaction: Hover tooltips. Justification: Clear, direct comparison of key metrics across the main segments. Library: Chart.js.
+        - Report Info: Full 100-product list. Goal: Organize, Compare. Viz: Interactive HTML Table. Interaction: Filter, Sort, Search, Expandable Rows. Justification: The most effective method for exploring a large, structured dataset, allowing users to find products meeting specific criteria. Method: Vanilla JS + Tailwind.
+        - Report Info: Qualitative analysis sections. Goal: Contextualize. Viz: Collapsible Accordions. Interaction: Click to expand/hide. Justification: Makes dense text manageable and prevents information overload, supporting the dashboard's clean aesthetic. Method: Vanilla JS + Tailwind.
+        - Report Info: Uniqueness/Quality scores. Goal: Inform. Viz: Star rating icons. Interaction: Static display. Justification: More visually intuitive and scannable than raw numbers in a table. Method: HTML Unicode characters.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8F9FA; /* Light gray background */
+        }
+        .active-tab {
+            border-bottom-color: #E57373; /* Soft Red */
+            color: #1A202C; /* Dark Gray */
+            font-weight: 600;
+        }
+        .inactive-tab {
+            border-bottom-color: transparent;
+            color: #718096; /* Medium Gray */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 380px;
+            }
+        }
+        .product-row-detail {
+            display: none;
+            background-color: #F9FAFB;
+        }
+        .star-rating {
+            color: #FBBF24; /* Amber-400 for stars */
+        }
+        .table-sort-asc::after {
+            content: ' ▲';
+            font-size: 0.7em;
+        }
+        .table-sort-desc::after {
+            content: ' ▼';
+            font-size: 0.7em;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="min-h-screen">
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <h1 class="text-2xl font-bold text-gray-900">Emerging Product Trends</h1>
+                </div>
+                <nav id="main-nav" class="flex border-b border-gray-200">
+                    <button data-tab="market-pulse" class="nav-tab active-tab py-3 px-4 text-sm font-medium transition-colors duration-200 ease-in-out">Market Pulse</button>
+                    <button data-tab="product-explorer" class="nav-tab inactive-tab py-3 px-4 text-sm font-medium transition-colors duration-200 ease-in-out">Product Explorer</button>
+                    <button data-tab="market-insights" class="nav-tab inactive-tab py-3 px-4 text-sm font-medium transition-colors duration-200 ease-in-out">Market Insights</button>
+                </nav>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Market Pulse Tab -->
+            <div id="market-pulse" class="tab-content">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">Market Pulse Dashboard</h2>
+                    <p class="text-gray-600">This dashboard provides a high-level overview of the product landscape based on our 2024-2025 research. Interact with the charts to explore the distribution of trending products and see which categories lead in innovation and perceived quality. This is your starting point for identifying broad market opportunities.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 font-medium">Total Products Analyzed</h3>
+                        <p class="text-4xl font-bold text-gray-900 mt-2">100</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 font-medium">Top Category</h3>
+                        <p class="text-4xl font-bold text-gray-900 mt-2">Women</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 font-medium">Highest Average Uniqueness</h3>
+                        <p class="text-4xl font-bold text-gray-900 mt-2">Pets</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Product Distribution by Category</h3>
+                        <div class="chart-container">
+                            <canvas id="categoryDistributionChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Average Scores by Category</h3>
+                        <div class="chart-container">
+                            <canvas id="categoryScoresChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product Explorer Tab -->
+            <div id="product-explorer" class="tab-content" style="display: none;">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">Product Explorer</h2>
+                    <p class="text-gray-600">Dive deep into the curated list of 100 trending products. Use the filters to narrow down by category, search for specific items or keywords, and sort the table to identify products with the highest potential. Click any product row to expand it and view more detailed information, including key features and supplier notes.</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-medium text-gray-700">Filter by category:</span>
+                            <button data-filter="All" class="filter-btn bg-red-500 text-white px-3 py-1 rounded-full text-sm">All</button>
+                            <button data-filter="Women" class="filter-btn bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">Women</button>
+                            <button data-filter="Men" class="filter-btn bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">Men</button>
+                            <button data-filter="Pets" class="filter-btn bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">Pets</button>
+                        </div>
+                        <div class="relative w-full md:w-auto">
+                            <input type="text" id="searchInput" placeholder="Search products..." class="w-full md:w-64 pl-4 pr-10 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-red-400">
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-3">
+                                <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Product Name</th>
+                                    <th scope="col" class="px-6 py-3 hidden md:table-cell">Category</th>
+                                    <th scope="col" class="px-6 py-3 cursor-pointer" data-sort="uniqueness">Uniqueness <span class="text-gray-400">◆</span></th>
+                                    <th scope="col" class="px-6 py-3 cursor-pointer" data-sort="quality">Quality <span class="text-gray-400">◆</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Insights Tab -->
+            <div id="market-insights" class="tab-content" style="display: none;">
+                 <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">Market Insights & Strategy</h2>
+                    <p class="text-gray-600">This section synthesizes the key findings and strategic recommendations from the full report. Explore the core drivers of today's digital marketplace, understand the mechanics of virality, and learn how to validate product potential. Use these insights to inform your e-commerce strategy and decision-making process.</p>
+                </div>
+                <div class="space-y-4">
+                    <div class="accordion-item bg-white rounded-lg shadow-sm">
+                        <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-gray-800 focus:outline-none">
+                            <span>Key Market Drivers (2024-2025)</span>
+                            <svg class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="accordion-content hidden p-5 pt-0 text-gray-600">
+                            The current digital marketplace is defined by short-form video, deep AI integration, and a shift towards authenticity with User-Generated Content (UGC) being highly influential. Social commerce, especially on TikTok, is booming, turning social interactions into direct sales. Successful products often demonstrate tangible solutions ("problem-solving tutorials") or provide an "aesthetic upgrade," fulfilling dual consumer needs for functionality and self-expression.
+                        </div>
+                    </div>
+                    <div class="accordion-item bg-white rounded-lg shadow-sm">
+                        <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-gray-800 focus:outline-none">
+                            <span>The TikTok Effect: Virality & Engagement</span>
+                            <svg class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="accordion-content hidden p-5 pt-0 text-gray-600">
+                            TikTok Shop has become a dominant force for product discovery. Its algorithm rapidly promotes content that resonates, turning products in categories like Beauty, Home, and Pet Supplies into viral sensations. The most successful items are those that can be visually demonstrated to solve a problem, save time, or enhance a user's lifestyle. The #TikTokMadeMeBuyIt phenomenon is a direct testament to its power in driving consumer purchasing decisions.
+                        </div>
+                    </div>
+                    <div class="accordion-item bg-white rounded-lg shadow-sm">
+                        <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-gray-800 focus:outline-none">
+                            <span>Validating with Google Trends</span>
+                            <svg class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="accordion-content hidden p-5 pt-0 text-gray-600">
+                            While TikTok creates initial buzz, Google Trends is essential for validating sustained market interest. A product with a steady or rising long-term search trend signals reliable demand, whereas a sharp spike followed by a decline indicates a short-lived fad. This dual analysis is crucial for distinguishing between fleeting hype and genuine, sustainable market opportunities. Furthermore, exploring "Related Queries" can uncover less-saturated niche markets.
+                        </div>
+                    </div>
+                    <div class="accordion-item bg-white rounded-lg shadow-sm">
+                        <button class="accordion-header w-full flex justify-between items-center p-5 text-left font-semibold text-gray-800 focus:outline-none">
+                            <span>Strategic Recommendations</span>
+                            <svg class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div class="accordion-content hidden p-5 pt-0 text-gray-600">
+                           <ul class="list-disc list-inside space-y-2">
+                                <li><strong>Prioritize Visual Storytelling:</strong> Use short-form video to demonstrate product value clearly and concisely.</li>
+                                <li><strong>Integrate Aesthetic Appeal:</strong> Design and market products that not only function well but also look good.</li>
+                                <li><strong>Monitor Trends Concurrently:</strong> Use social media for discovery and search data for validation.</li>
+                                <li><strong>Innovate within Niches:</strong> Find underserved sub-categories to avoid competing in oversaturated markets.</li>
+                                <li><strong>Embrace Wellness & Sustainability:</strong> Cater to the growing consumer demand for products that are healthy and eco-conscious.</li>
+                                <li><strong>Cultivate Agile Operations:</strong> Be prepared to scale production and marketing quickly to capitalize on fast-moving trends.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const productData = [
+        { name: "Heatless Hair Curler", category: "Women", uniqueness: 4, quality: 4.5, features: "Flexible rods/bands for heat-free curls, preventing damage.", supplier: "Kitsch, Yanibest" },
+        { name: "Rose Quartz Facial Massager", category: "Women", uniqueness: 3, quality: 4.5, features: "Stone tool for facial massage, reduces puffiness/wrinkles, improves circulation.", supplier: "BAIMEI, Artnaturals" },
+        { name: "7-in-1 Hair Straightener and Curler Set", category: "Women", uniqueness: 3, quality: 3.5, features: "Multi-functional for various hair styles, ceramic coating for shine/protection.", supplier: "SPPZCUR, Vincofy, PARWIN PRO BEAUTY" },
+        { name: "Oversized Vintage Print Hoodie", category: "Women", uniqueness: 3, quality: 4.5, features: "Blends comfort with edgy, vintage aesthetics, abstract art styles.", supplier: "KEEPSHOWING, FAIABLE" },
+        { name: "Color Contrast Summer Dress", category: "Women", uniqueness: 3, quality: 3.5, features: "Combines vibrant hues with versatile styles (A-line, bodycon).", supplier: "HOULENGS, ZESICA, BTFBM" },
+        { name: "Slimming Bodysuit", category: "Women", uniqueness: 2, quality: 4.5, features: "Tummy control, seamless sculpting, butt lifter.", supplier: "SHAPERX, FeelinGirl, YIANNA" },
+        { name: "Mini Shoulder Bag", category: "Women", uniqueness: 3, quality: 3.5, features: "Practical and aesthetic, crescent/clear/convertible designs.", supplier: "YIKOEE, EVGLOW, Iioscre" },
+        { name: "Stackable Rings Set", category: "Women", uniqueness: 3, quality: 3.5, features: "Layering jewelry for personalized looks, dainty/minimalist.", supplier: "YEEZII, MILACOLATO" },
+        { name: "Ear Cuff Set", category: "Women", uniqueness: 3, quality: 3.5, features: "Bold silhouettes, organic textures, no piercing needed.", supplier: "Besteel, Coolkin, IRONBOX, LOLIAS" },
+        { name: "Multi-Use Makeup Tool", category: "Women", uniqueness: 4, quality: 3.5, features: "Combines multiple functions (foundation, concealer, eyeshadow) in one brush.", supplier: "START MAKERS, KINGMAS, e.l.f." },
+        { name: "Microneedle Acne Pimple Patch", category: "Women", uniqueness: 4, quality: 4.5, features: "Hydrocolloid patches with microdarts for deep/hidden pimples.", supplier: "Hero Cosmetics, Peach Slices, Rael" },
+        { name: "Eye Patch for Dark Circles and Bags", category: "Women", uniqueness: 2, quality: 4.5, features: "Hydrogel patches for puffiness, dark circles, wrinkles.", supplier: "Good Molecules, Peter Thomas Roth, grace & stella" },
+        { name: "Underarm Deodorant Pads", category: "Women", uniqueness: 3, quality: 3.5, features: "Invisible, self-adhesive cotton pads for sweat absorption.", supplier: "CANAGROW, OTTOLIVES, SweatBlock" },
+        { name: "Biotechnological Anti-aging Lip Balm", category: "Women", uniqueness: 4, quality: 5, features: "Plumping/smoothing with peptides and hyaluronic acid.", supplier: "Biossance, FLEUR & BEE" },
+        { name: "Vegan Debloat Complex", category: "Women", uniqueness: 4, quality: 4.5, features: "Plant extracts and digestive enzymes for gut health.", supplier: "MONDAY MUSE, Boobie Brands, Ovira" },
+        { name: "At-Home Red Light Therapy Mask", category: "Women", uniqueness: 4, quality: 4.5, features: "LED light therapy for collagen, inflammation, anti-aging.", supplier: "Beuwe, SDKWDH, Lovsheme" },
+        { name: "Beef Tallow Moisturizer", category: "Women", uniqueness: 4, quality: 5, features: "Natural, unrefined, deeply hydrating, anti-aging.", supplier: "COWLO, MROUVIK" },
+        { name: "Glass Skin Mask", category: "Women", uniqueness: 4, quality: 4.5, features: "Aims for smooth, luminous, poreless complexion.", supplier: "COSRX" },
+        { name: "Portable ECG Monitor", category: "Women", uniqueness: 5, quality: 5, features: "Records ECG/heart rate, smartphone compatible, no subscription.", supplier: "EMAY" },
+        { name: "Smart Sleep Trackers (e.g., Rings)", category: "Women", uniqueness: 5, quality: 5, features: "Monitor sleep patterns, optimize environment, discreet form.", supplier: "Ozlo, Oura Ring, Anker Soundcore" },
+        { name: "Smart Water Bottles", category: "Women", uniqueness: 4, quality: 4.5, features: "Track water intake, hydration goals, temperature control/purification.", supplier: "LARQ, Hydro Flask, Owala, Ello" },
+        { name: "Biodegradable Phone Case", category: "Women", uniqueness: 5, quality: 5, features: "Plant-based, compostable, eco-friendly, shock-absorbing.", supplier: "agood, eplanita, Incipio Organicore" },
+        { name: "Reusable Beeswax Food Wraps", category: "Women", uniqueness: 4, quality: 4.5, features: "Organic cotton/beeswax, washable, compostable, self-adhesive.", supplier: "Noveread, Bee's Wrap, Mioeco" },
+        { name: "Compostable Kitchen Sponges", category: "Women", uniqueness: 4, quality: 4.5, features: "Natural fibers, biodegradable, strong absorbent, non-scratch.", supplier: "Vilphel, bioGo" },
+        { name: "Wool Dryer Balls", category: "Women", uniqueness: 3, quality: 5, features: "Natural, reusable, reduce drying time/static.", supplier: "LooHoo, Otylzto" },
+        { name: "Concentrated Laundry Detergent Sheets", category: "Women", uniqueness: 4, quality: 4.5, features: "Dissolvable, lightweight, plastic-free, hypoallergenic.", supplier: "HAPPY HOUR, Earth Breeze" },
+        { name: "Artisanal Handwoven Scarf", category: "Women", uniqueness: 4, quality: 5, features: "Skilled craftsmanship, natural fibers, unique patterns.", supplier: "MIAKRAFTS, GreaterGood" },
+        { name: "Sculptural Handbag", category: "Women", uniqueness: 4, quality: 5, features: "Statement pieces with geometric shapes, bold designs.", supplier: "CAFINY" },
+        { name: "Futuristic Eyewear", category: "Women", uniqueness: 5, quality: 5, features: "Innovative shapes, tech-infused frames, LED details.", supplier: "XGOOD" },
+        { name: "Tech-Integrated Smart Ring", category: "Women", uniqueness: 5, quality: 5, features: "Health monitoring (HR, SpO2, BP, sleep, steps) in discreet ring.", supplier: "Milavan, Oura Ring" },
+        { name: "AI-powered Fitness Mirror", category: "Women", uniqueness: 5, quality: 5, features: "Interactive screen, tracks form, real-time feedback.", supplier: "AISUNDY, RIXZSIW" },
+        { name: "LED Creative Vase Crystal Lamp", category: "Women", uniqueness: 4, quality: 5, features: "2-in-1 lamp and vase, adjustable brightness, cordless, rechargeable.", supplier: "DIYEAH, FNHMSL" },
+        { name: "Wireless Sleep Mask with Headphones", category: "Women", uniqueness: 4, quality: 4.5, features: "3D sleep mask with integrated Bluetooth headphones.", supplier: "LC-dolida, MUSICOZY" },
+        { name: "Portable Chip Bag Sealer", category: "Women", uniqueness: 3, quality: 3.5, features: "2-in-1 heat seal and cutter, portable.", supplier: "FEPPO, ODSD" },
+        { name: "LED Projection Alarm Clock", category: "Women", uniqueness: 3, quality: 3.5, features: "Projects time onto surfaces, USB charging.", supplier: "SZELAM, Peakeep" },
+        { name: "Portable Blender (USB)", category: "Women", uniqueness: 3, quality: 4.5, features: "Compact, personal, on-the-go blending.", supplier: "Vessel, Ninja, KOIOS" },
+        { name: "AI-driven Smart Refrigerator", category: "Women", uniqueness: 5, quality: 5, features: "AI for food management, smart home integration.", supplier: "Samsung Family Hub, LG InstaView" },
+        { name: "AI-powered Oven", category: "Women", uniqueness: 5, quality: 5, features: "Recognizes food, adjusts settings, steam infusion.", supplier: "Our Place Wonder Oven, Tovala Smart Oven Pro" },
+        { name: "Biometric Door Lock", category: "Women", uniqueness: 5, quality: 5, features: "Keyless entry, fingerprint access, remote control.", supplier: "KLLOQUE, GHome Smart" },
+        { name: "Artisanal Scented Candles", category: "Women", uniqueness: 4, quality: 5, features: "Hand-poured, unique scents, aesthetic vessels.", supplier: "AUGUST & PIERS, Craft & Kin" },
+        { name: "Smart Wallet", category: "Men", uniqueness: 4, quality: 5, features: "Sleek, quick card access, solar-powered tracker.", supplier: "Ekster Parliament 3.0" },
+        { name: "Multi-Functional Grooming Tool", category: "Men", uniqueness: 3, quality: 4.5, features: "Dual-sided blade, adjustable comb, wet/dry use.", supplier: "Philips Norelco OneBlade Pro, MANSCAPED" },
+        { name: "Premium Fragrance (e.g., Dior Sauvage)", category: "Men", uniqueness: 4, quality: 5, features: "Deep, intense, sophisticated scent, lasting signature.", supplier: "Dior" },
+        { name: "Foldable Push-Up Board", category: "Men", uniqueness: 4, quality: 4.5, features: "Various exercise methods, portable, lightweight, includes accessories.", supplier: "HOTWAVE, AERLANG, LALAHIGH" },
+        { name: "LED Multifunctional Camp Light", category: "Men", uniqueness: 4, quality: 4.5, features: "Flashlight, floodlight, desk lamp, SOS, power bank, waterproof.", supplier: "Butiblener" },
+        { name: "Game Console Phone Case", category: "Men", uniqueness: 4, quality: 3.5, features: "Retro console style, built-in games, full color display, shockproof.", supplier: "KoziCases, Chu9" },
+        { name: "High-Tech Dust Cleaning Gel", category: "Men", uniqueness: 4, quality: 4.5, features: "Reusable, moldable, lifts dust from hard-to-reach places, disinfecting.", supplier: "PULIDIKI, FiveJoy, Chemical Guys" },
+        { name: "Spaceship Projection Light", category: "Men", uniqueness: 4, quality: 4.5, features: "Galaxy/moon/nebula projection, integrated Bluetooth speaker.", supplier: "LUXONIC" },
+        { name: "3-in-1 Wireless Charger", category: "Men", uniqueness: 4, quality: 4.5, features: "Charges phone, smartwatch, earbuds simultaneously, portable.", supplier: "ARMERI, GLOWLIFE, TEGISPAK" },
+        { name: "Portable Smartphone Gimbal", category: "Men", uniqueness: 4, quality: 5, features: "3-axis stabilization, extension rod, object tracking, foldable.", supplier: "DJI Osmo Mobile, AOCHUAN, hohem iSteady" },
+        { name: "Ultra-Thin Magnetic Power Bank", category: "Men", uniqueness: 4, quality: 5, features: "Ultra-slim, MagSafe compatible, high capacity, USB-C.", supplier: "MOVE SPEED, LISEN" },
+        { name: "Literary Clock", category: "Men", uniqueness: 5, quality: 5, features: "Displays time with book quotes, multi-lingual, Wi-Fi.", supplier: "Jose Cardona and Luke Gray (designers)" },
+        { name: "Interactive QR Mug", category: "Men", uniqueness: 5, quality: 5, features: "Ceramic mug with QR code linking to daily baseball facts/trivia.", supplier: "Uncommon Goods, Robert Kline Art" },
+        { name: "Smartphone-Controlled Paper Airplane", category: "Men", uniqueness: 5, quality: 4.5, features: "Kit to convert paper planes into RC-controlled aircraft.", supplier: "POWERUP, BriCool" },
+        { name: "Acoustic Amplifying Phone Speaker", category: "Men", uniqueness: 5, quality: 5, features: "Ceramic sculpture, acoustically amplifies phone sound without power.", supplier: "JoAnn Stratakos (creator)" },
+        { name: "Inkless Instant Photo Printer", category: "Men", uniqueness: 4, quality: 3.5, features: "Portable, thermal paper, no ink needed, mobile compatible.", supplier: "POOOLITECH, PRINHSJI" },
+        { name: "Long Distance Friendship Lamp", category: "Men", uniqueness: 4, quality: 5, features: "Wi-Fi touch lamp, changes color when touched by loved one.", supplier: "Friendship Lamps by Filimin" },
+        { name: "Lovebox Spinning Heart Messenger", category: "Men", uniqueness: 4, quality: 5, features: "Sends digital messages, heart spins.", supplier: "Lovebox" },
+        { name: "Bold Statement Belt Buckle", category: "Men", uniqueness: 4, quality: 4.5, features: "Large, ornate buckles, intricate designs.", supplier: "Lucky Brand, WMG" },
+        { name: "Ergonomic Office Chair", category: "Men", uniqueness: 4, quality: 5, features: "Self-adaptive lumbar, weight-sensing, 6D armrests, breathable mesh.", supplier: "Sihoo, Pavia, Bedarra" },
+        { name: "Advanced Cable Management System", category: "Men", uniqueness: 3, quality: 3.5, features: "Keeps wires tidy, accessible, surge protection.", supplier: "Spacet" },
+        { name: "Premium Desk Pad", category: "Men", uniqueness: 3, quality: 4.5, features: "Protects desk, smooth mouse surface, posture support.", supplier: "Spacet" },
+        { name: "Ergonomic Mouse Pad", category: "Men", uniqueness: 3, quality: 3.5, features: "Reduces wrist strain, improves comfort (gel/memory foam).", supplier: "Spacet" },
+        { name: "Anti-Fatigue Foot Rest", category: "Men", uniqueness: 3, quality: 3.5, features: "Promotes better posture, reduces strain on legs/back.", supplier: "Spacet" },
+        { name: "Specialized Men's Skincare Tools", category: "Men", uniqueness: 4, quality: 4.5, features: "LED light therapy masks, ultrasonic facial cleansing tools.", supplier: "Beard Guru" },
+        { name: "AI Pet Behavior Analysis System", category: "Pets", uniqueness: 5, quality: 5, features: "AI analyzes pet activity/emotions for early detection of stress/illness.", supplier: "Furbo, PETLIBRO, Dokoo" },
+        { name: "Wearable Pet Health Tracker", category: "Pets", uniqueness: 5, quality: 5, features: "Real-time tracking of vital signs, alerts for health issues.", supplier: "PetPace, Tractive, Pawfit" },
+        { name: "AI Personalized Pet Nutrition System", category: "Pets", uniqueness: 5, quality: 5, features: "Personalized meal plans, AI monitors consumption, smart jam fix.", supplier: "PETLIBRO, Amicura, Pawsync" },
+        { name: "Eco-Friendly Pet Products", category: "Pets", uniqueness: 4, quality: 5, features: "Eco-friendly materials, minimizes environmental impact.", supplier: "Penn-Plax" },
+        { name: "Self-Cleaning Sunflower Pet Comb", category: "Pets", uniqueness: 4, quality: 4.5, features: "Self-cleaning, removes hair, gentle teeth with resin protection.", supplier: "joyxiwa, Awpland, Echo Pets" },
+        { name: "Honey Jar Pet Cat Nest", category: "Pets", uniqueness: 4, quality: 4.5, features: "Cute cartoon honey jar shape, soft, washable cushion.", supplier: "Romaneco, PECHVINO" },
+        { name: "Pet Finger Toothbrush", category: "Pets", uniqueness: 3, quality: 4.5, features: "Food-grade silicone, 360° bristles for efficient cleaning.", supplier: "Duckart, powerfeng" },
+        { name: "Electric Cat Toy Infrared Laser", category: "Pets", uniqueness: 4, quality: 4.5, features: "Automatic 360° rotation, motion-activated, smart standby.", supplier: "TBTeek, Potaroma" },
+        { name: "Secure Dog Car Bed", category: "Pets", uniqueness: 3, quality: 4.5, features: "Dedicated, comfortable, safe space for pets in cars.", supplier: "Gearking, melafa365, Feporen" },
+        { name: "Unique Design Slow Pet Feeder", category: "Pets", uniqueness: 4, quality: 4.5, features: "Bowls with shapes/grooves to slow eating, reduces digestive issues.", supplier: "TOKAYIFE, Coomazy, Havniva" },
+        { name: "Pet Cooling Mat", category: "Pets", uniqueness: 3, quality: 3.5, features: "Provides cool surface for pets, washable, non-slip.", supplier: "MICROCOSMOS, PetAmi, Rywell" },
+        { name: "Pet Collagen Sticks", category: "Pets", uniqueness: 3, quality: 4.5, features: "Treats with health benefits for joints, skin, coat.", supplier: "Redbarn Pet Products, Natural Farm" },
+        { name: "Advanced Aquarium Solutions", category: "Pets", uniqueness: 4, quality: 5, features: "Sophisticated filtration, natural decor (rocks, driftwood).", supplier: "Penn-Plax, JPHYLL, Jorewood" },
+        { name: "Unique Reptile Terrarium Decor", category: "Pets", uniqueness: 4, quality: 4.5, features: "Specific decor for reptile habitats, reptile-safe materials.", supplier: "ReptiKing, Reptile Growth" },
+        { name: "Smart Pet Training Devices", category: "Pets", uniqueness: 5, quality: 5, features: "Sensors monitor behavior, AI-powered coaching, virtual fencing.", supplier: "SATELLAI, Halo Collar, Dogtra" },
+        { name: "Unique Pet Furniture", category: "Pets", uniqueness: 4, quality: 5, features: "Combines pet comfort with household functionality, modern designs.", supplier: "The Pet Carpenter, Mewoo, MEWOOFUN" },
+        { name: "New Pet Health Supplements", category: "Pets", uniqueness: 4, quality: 5, features: "Support digestive health, immune system, natural ingredients.", supplier: "Zesty Paws, Native Pet, Purina Pro Plan" },
+        { name: "New Pet Calming Products", category: "Pets", uniqueness: 4, quality: 4.5, features: "Natural, drug-free solutions for anxiety, addresses stress triggers.", supplier: "Penelope's Bloom, Soul CBD, BestLife4Pets" },
+        { name: "Innovative Pet Feeding Solutions", category: "Pets", uniqueness: 4, quality: 4.5, features: "Freeze-dried toppers, wet food variety, specific kibble, AI-powered feeders.", supplier: "Nom Nom, Blue Buffalo, Instinct Raw Meals" },
+        { name: "Unique Pet Grooming Tools", category: "Pets", uniqueness: 4, quality: 4.5, features: "3-in-1 steam/mist brushes, vacuum grooming kits for mess-free grooming.", supplier: "ENUKYCOM, Petnology, Mova, OPOWO" },
+        { name: "Innovative Pet Water Fountains", category: "Pets", uniqueness: 4, quality: 4.5, features: "Motion-activated, multi-layer filtration, app monitoring, long battery life.", supplier: "Philips, Enabot, Vrainito" },
+        { name: "Unique Pet Beds", category: "Pets", uniqueness: 4, quality: 4.5, features: "Specialized comfort/support (orthopedic), aesthetic appeal.", supplier: "Casper, FurHaven, Dokdogs" },
+        { name: "Specialized Pet Training Collars", category: "Pets", uniqueness: 5, quality: 5, features: "Ultrasonic, strobe, GPS tracking, AI coaching, humane alternatives.", supplier: "SATELLAI, Halo Collar, Dogtra" },
+        { name: "Portable Composting Toilet", category: "Pets", uniqueness: 4, quality: 4.5, features: "Comfortable and hygienic alternative to traditional outdoor waste disposal.", supplier: "Trelino Evo S" },
+        { name: "Solar-Powered Pet Feeders", category: "Pets", uniqueness: 5, quality: 5, features: "Combines automated pet feeding with renewable energy source.", supplier: "Various (conceptual)" },
+    ];
+
+
+    // State
+    let currentFilter = 'All';
+    let currentSort = { key: 'name', order: 'asc' };
+
+    // DOM Elements
+    const nav = document.getElementById('main-nav');
+    const tabs = document.querySelectorAll('.tab-content');
+    const productTableBody = document.getElementById('productTableBody');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const searchInput = document.getElementById('searchInput');
+    const sortHeaders = document.querySelectorAll('[data-sort]');
+    
+    // Tab Navigation
+    nav.addEventListener('click', (e) => {
+        if (e.target.classList.contains('nav-tab')) {
+            const tabName = e.target.dataset.tab;
+            
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active-tab');
+                tab.classList.add('inactive-tab');
+            });
+            e.target.classList.add('active-tab');
+            e.target.classList.remove('inactive-tab');
+
+            tabs.forEach(tab => {
+                if (tab.id === tabName) {
+                    tab.style.display = 'block';
+                } else {
+                    tab.style.display = 'none';
+                }
+            });
+        }
+    });
+
+    // Accordion Logic
+    const accordionItems = document.querySelectorAll('.accordion-item');
+    accordionItems.forEach(item => {
+        const header = item.querySelector('.accordion-header');
+        const content = item.querySelector('.accordion-content');
+        const icon = header.querySelector('svg');
+        header.addEventListener('click', () => {
+            content.classList.toggle('hidden');
+            icon.classList.toggle('rotate-180');
+        });
+    });
+
+    // Chart.js Setup
+    const setupCharts = () => {
+        const womenCount = productData.filter(p => p.category === 'Women').length;
+        const menCount = productData.filter(p => p.category === 'Men').length;
+        const petsCount = productData.filter(p => p.category === 'Pets').length;
+
+        // Donut Chart: Category Distribution
+        const categoryDistCtx = document.getElementById('categoryDistributionChart').getContext('2d');
+        new Chart(categoryDistCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Women', 'Men', 'Pets'],
+                datasets: [{
+                    label: 'Product Count',
+                    data: [womenCount, menCount, petsCount],
+                    backgroundColor: ['#FCA5A5', '#93C5FD', '#A7F3D0'], // Red-300, Blue-300, Green-300
+                    borderColor: ['#F87171', '#60A5FA', '#6EE7B7'], // Red-400, Blue-400, Green-400
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed !== null) {
+                                    label += context.parsed + ' products';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Bar Chart: Average Scores
+        const categoryScoresCtx = document.getElementById('categoryScoresChart').getContext('2d');
+        const avgScores = {
+            'Women': { u: 0, q: 0, c: 0 },
+            'Men': { u: 0, q: 0, c: 0 },
+            'Pets': { u: 0, q: 0, c: 0 }
+        };
+        productData.forEach(p => {
+            avgScores[p.category].u += p.uniqueness;
+            avgScores[p.category].q += p.quality;
+            avgScores[p.category].c++;
+        });
+
+        const labels = Object.keys(avgScores);
+        const avgUniqueness = labels.map(l => (avgScores[l].u / avgScores[l].c).toFixed(2));
+        const avgQuality = labels.map(l => (avgScores[l].q / avgScores[l].c).toFixed(2));
+
+        new Chart(categoryScoresCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Avg. Uniqueness',
+                        data: avgUniqueness,
+                        backgroundColor: '#60A5FA', // Blue-400
+                        borderColor: '#3B82F6', // Blue-500
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Avg. Quality',
+                        data: avgQuality,
+                        backgroundColor: '#FBBF24', // Amber-400
+                        borderColor: '#F59E0B', // Amber-500
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 5,
+                        title: { display: true, text: 'Score (out of 5)' }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+    };
+    
+    // Product Table Logic
+    const generateStarRating = (rating) => {
+        const fullStars = Math.floor(rating);
+        const halfStar = rating % 1 !== 0;
+        let stars = '★'.repeat(fullStars);
+        if (halfStar) stars += '½';
+        stars += '☆'.repeat(5 - fullStars - (halfStar ? 1 : 0));
+        return `<span class="star-rating">${stars}</span>`;
+    };
+
+    const renderTable = () => {
+        const searchTerm = searchInput.value.toLowerCase();
+        let filteredData = productData;
+
+        if (currentFilter !== 'All') {
+            filteredData = filteredData.filter(p => p.category === currentFilter);
+        }
+
+        if (searchTerm) {
+            filteredData = filteredData.filter(p => 
+                p.name.toLowerCase().includes(searchTerm) ||
+                p.features.toLowerCase().includes(searchTerm) ||
+                p.supplier.toLowerCase().includes(searchTerm)
+            );
+        }
+        
+        filteredData.sort((a, b) => {
+            let valA = a[currentSort.key];
+            let valB = b[currentSort.key];
+
+            if (typeof valA === 'string') {
+                valA = valA.toLowerCase();
+                valB = valB.toLowerCase();
+            }
+
+            if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
+            if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        productTableBody.innerHTML = filteredData.map(product => `
+            <tr class="product-row bg-white border-b hover:bg-gray-50 cursor-pointer">
+                <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${product.name}</td>
+                <td class="px-6 py-4 hidden md:table-cell">${product.category}</td>
+                <td class="px-6 py-4">${generateStarRating(product.uniqueness)}</td>
+                <td class="px-6 py-4">${generateStarRating(product.quality)}</td>
+            </tr>
+            <tr class="product-row-detail">
+                <td colspan="4" class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div><strong class="font-semibold text-gray-700">Key Features:</strong> ${product.features}</div>
+                        <div><strong class="font-semibold text-gray-700">Potential Suppliers:</strong> ${product.supplier}</div>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // Re-add event listeners for expandable rows
+        document.querySelectorAll('.product-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const detailRow = row.nextElementSibling;
+                detailRow.style.display = detailRow.style.display === 'table-row' ? 'none' : 'table-row';
+            });
+        });
+    };
+
+    // Event Listeners for table interaction
+    filterButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            currentFilter = button.dataset.filter;
+            filterButtons.forEach(btn => {
+                btn.classList.remove('bg-red-500', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            button.classList.add('bg-red-500', 'text-white');
+            button.classList.remove('bg-gray-200', 'text-gray-700');
+            renderTable();
+        });
+    });
+
+    searchInput.addEventListener('input', renderTable);
+
+    sortHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const sortKey = header.dataset.sort;
+            if (currentSort.key === sortKey) {
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.key = sortKey;
+                currentSort.order = 'asc';
+            }
+            
+            // Update visual indicator
+            sortHeaders.forEach(h => h.classList.remove('table-sort-asc', 'table-sort-desc'));
+            header.classList.add(currentSort.order === 'asc' ? 'table-sort-asc' : 'table-sort-desc');
+
+            renderTable();
+        });
+    });
+
+    // Initial Load
+    setupCharts();
+    renderTable();
+});
+</script>
+</body>
+</html>
